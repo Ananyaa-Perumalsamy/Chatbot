@@ -5,13 +5,19 @@ import uvicorn
 from PIL import Image
 import io
 import base64
-import requests
+import torch
+from torchvision import transforms
+from diffusers import StableDiffusionPipeline
 
 # Initialize FastAPI
 app = FastAPI()
 
 # Configure Gemini API
-genai.configure(api_key="AIzaSyD2AEOW9M_O3ibqkGPdG9Pd5VFwt0tdxPE")
+genai.configure(api_key="YOUR_GEMINI_API_KEY")
+
+# Load Stable Diffusion Model
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipe.to("cuda" if torch.cuda.is_available() else "cpu")
 
 class TextRequest(BaseModel):
     text: str
@@ -35,16 +41,12 @@ async def chat_image(file: UploadFile = File(...)):
 
 @app.post("/generate/image")
 async def generate_image(request: TextRequest):
-    dalle_url = "https://api.openai.com/v1/images/generations"  # DALL·E API endpoint
-    headers = {"Authorization": "Bearer YOUR_OPENAI_API_KEY", "Content-Type": "application/json"}
-    payload = {"model": "dall-e-3", "prompt": request.text, "n": 1, "size": "1024x1024"}
-    
-    response = requests.post(dalle_url, json=payload, headers=headers)
-    if response.status_code == 200:
-        image_url = response.json()["data"][0]["url"]
-        return {"image_url": image_url}
-    else:
-        return {"error": "Image generation failed", "details": response.text}
+    image = pipe(request.text).images[0]
+    img_bytes = io.BytesIO()
+    image.save(img_bytes, format="PNG")
+    img_base64 = base64.b64encode(img_bytes.getvalue()).decode("utf-8")
+    return {"image_base64": img_base64}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
